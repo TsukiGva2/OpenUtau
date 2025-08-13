@@ -35,7 +35,8 @@ namespace OpenUtau.App.Views {
         private bool openPianoRollWindow;
 
         private PartEditState? partEditState;
-        private readonly DispatcherTimer timer;
+        
+        private readonly DispatcherTimer? timer = null;
         private readonly DispatcherTimer autosaveTimer;
         private bool forceClose;
 
@@ -79,6 +80,19 @@ namespace OpenUtau.App.Views {
 
             DocManager.Inst.AddSubscriber(this);
 
+            // Timer workaround for auto-playback
+            var autoPlaybackTimer = new DispatcherTimer {
+                Interval = TimeSpan.FromSeconds(2)
+            };
+            autoPlaybackTimer.Tick += (s, e) => {
+                if (DocManager.Inst.Project != null && DocManager.Inst.Project.parts.Count > 0) {
+                    Serilog.Log.Information("Auto-playback timer triggered Play().");
+                    Play();
+                    autoPlaybackTimer.Stop();
+                }
+            };
+            autoPlaybackTimer.Start();
+
             Log.Information("Main window checking Update.");
             UpdaterDialog.CheckForUpdate(
                 dialog => dialog.Show(this),
@@ -86,6 +100,12 @@ namespace OpenUtau.App.Views {
                 TaskScheduler.FromCurrentSynchronizationContext());
             Log.Information("Created main window.");
             this.Cursor = null;
+
+        }
+
+        private void OnProjectLoaded(object? sender, EventArgs e) {
+            Serilog.Log.Information("Project loaded, triggering Play().");
+            Play();
         }
 
         public void InitProject() {
@@ -1359,6 +1379,13 @@ namespace OpenUtau.App.Views {
         }
 
         public void OnNext(UCommand cmd, bool isUndo) {
+            if (cmd is LoadingNotification loadingNotif) {
+                Serilog.Log.Information($"LoadingNotification received: startLoading={loadingNotif.startLoading}");
+                if (!loadingNotif.startLoading) {
+                    Serilog.Log.Information("Project loaded, triggering Play().");
+                    Play();
+                }
+            }
             if (cmd is ErrorMessageNotification notif) {
                 switch (notif.e) {
                     case Core.Render.NoResamplerException:
@@ -1373,13 +1400,15 @@ namespace OpenUtau.App.Views {
                         MessageBox.ShowError(this, notif.e, notif.message, true);
                         break;
                 }
-            } else if (cmd is LoadingNotification loadingNotif && loadingNotif.window == typeof(MainWindow)) {
-                if (loadingNotif.startLoading) {
+            }
+            else if (cmd is LoadingNotification loadingNotif2) {
+                if (loadingNotif2.startLoading) {
                     MessageBox.ShowLoading(this);
                 } else {
                     MessageBox.CloseLoading();
                 }
-            } else if (cmd is VoiceColorRemappingNotification voicecolorNotif) {
+            }
+            else if (cmd is VoiceColorRemappingNotification voicecolorNotif) {
                 if (voicecolorNotif.TrackNo < 0 || DocManager.Inst.Project.tracks.Count <= voicecolorNotif.TrackNo) {
                     ValidateTracksVoiceColor();
                 } else {
@@ -1391,6 +1420,41 @@ namespace OpenUtau.App.Views {
                     }
                 }
             }
+        }
+
+        public void OpenUstxFile(string filePath) {
+            try {
+                // Open the project file
+                viewModel.OpenProject(new string[] { filePath });
+                viewModel.Page = 1;
+            } catch (Exception) {
+                // Optionally log or show error
+            }
+        }
+
+        public void PlayProject() {
+            viewModel.PlaybackViewModel.PlayOrPause();
+        }
+
+        private void OnFileCreated(object sender, FileSystemEventArgs e) {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => {
+                var lifetime = Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime;
+                var mainWindow = lifetime?.MainWindow as MainWindow;
+                if (mainWindow != null) {
+                    mainWindow.OpenUstxFile(e.FullPath);
+                    mainWindow.PlayProject();
+                }
+            });
+        }
+
+        public void OpenFile(string filePath) {
+            viewModel.OpenProject(new string[] { filePath });
+            viewModel.Page = 1;
+        }
+
+        public void Play() {
+            Serilog.Log.Information("Play() called in MainWindow.");
+            viewModel.PlaybackViewModel.PlayOrPause();
         }
     }
 }

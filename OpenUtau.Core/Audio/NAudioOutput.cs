@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using NAudio.Wave;
+using OpenUtau.Core;
 using OpenUtau.Core.Util;
 
 namespace OpenUtau.Audio {
@@ -50,7 +51,12 @@ namespace OpenUtau.Audio {
                     DeviceNumber = deviceNumber,
                 };
                 waveOutEvent.Init(sampleProvider);
+                waveOutEvent.PlaybackStopped += OnPlaybackStopped;
             }
+        }
+
+        private void OnPlaybackStopped(object sender, StoppedEventArgs e) {
+            PlaybackManager.Inst.StopPlayback();
         }
 
         public void Pause() {

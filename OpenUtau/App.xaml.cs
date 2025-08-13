@@ -1,7 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -12,6 +14,8 @@ using Serilog;
 
 namespace OpenUtau.App {
     public class App : Application {
+        private FileSystemWatcher? watcher;
+
         public override void Initialize() {
             Log.Information("Initializing application.");
             AvaloniaXamlLoader.Load(this);
@@ -24,6 +28,18 @@ namespace OpenUtau.App {
             Log.Information("Framework initialization completed.");
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) {
                 desktop.MainWindow = new SplashWindow();
+
+                // Read watched folder from config file, fallback to default
+                // Watch the temp folder in the same directory as the running Python script
+                // This assumes the Python script and OpenUtau are distributed together
+                string pythonTempFolder = Path.Combine(Directory.GetCurrentDirectory(), "temp");
+                if (!Directory.Exists(pythonTempFolder)) {
+                    Directory.CreateDirectory(pythonTempFolder);
+                }
+                Serilog.Log.Information($"OpenUtau is watching folder: {pythonTempFolder}");
+                watcher = new FileSystemWatcher(pythonTempFolder, "*.ustx");
+                watcher.Created += OnFileCreated;
+                watcher.EnableRaisingEvents = true;
             }
 
             base.OnFrameworkInitializationCompleted();
@@ -103,6 +119,27 @@ namespace OpenUtau.App {
                 Current.RequestedThemeVariant = ThemeVariant.Dark;
             }
             ThemeManager.LoadTheme();
+        }
+
+        private void OnFileCreated(object sender, FileSystemEventArgs e) {
+            Serilog.Log.Information($"OnFileCreated fired for {e.FullPath}");
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => {
+                var lifetime = Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime;
+                var mainWindow = lifetime?.MainWindow as MainWindow;
+                if (mainWindow != null) {
+                    Serilog.Log.Information("Calling OpenFile in MainWindow.");
+                    mainWindow.OpenFile(e.FullPath);
+                    Task.Run(async () => {
+                        await Task.Delay(3000); // Wait 3 seconds for file to load
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() => {
+                            Serilog.Log.Information("Calling Play() in MainWindow.");
+                            mainWindow.Play();
+                        });
+                    });
+                } else {
+                    Serilog.Log.Information("MainWindow is null in OnFileCreated.");
+                }
+            });
         }
     }
 }

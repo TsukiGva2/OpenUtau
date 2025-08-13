@@ -64,7 +64,7 @@ namespace OpenUtau.App.ViewModels {
 
         [Reactive] public string ClearCacheHeader { get; set; }
         public bool ProjectSaved => !string.IsNullOrEmpty(DocManager.Inst.Project.FilePath) && DocManager.Inst.Project.Saved;
-        public string AppVersion => $"OpenUtau v{System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version}";
+    public string AppVersion => "OpenUtau v0.1.529.0 (TexTo)";
         [Reactive] public double Progress { get; set; }
         [Reactive] public string ProgressText { get; set; }
         public ReactiveCommand<UPart, Unit> PartDeleteCommand { get; set; }

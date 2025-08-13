@@ -250,3 +250,4 @@ namespace OpenUtau.Core {
         #endregion
     }
 }
+// In PlaybackManager or PlaybackViewModel, when playback finishes:
